@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import QApplication
 # Parameters for the Sine wave
 duration = 20.0  # Total duration in seconds, used for modulo in continuous playback
 sample_rate = 44100  # Sample rate in Hz
+block_duration = 50 # length of block in ms
 frequency = 1000  # Frequency of the sine wave in Hz
 chunk_size = 256  # Number of samples per chunk
 phase = 0.0
@@ -33,7 +34,7 @@ def play_sine_wave_continuous():
         with sd.OutputStream(samplerate=sample_rate, channels=1, callback=callback):
             print("Starting continuous sine wave playback.")
             while not stop_flag.is_set():
-                sd.sleep(100)  # Sleep for a short period to prevent high CPU usage
+                sd.sleep(block_duration)  # Sleep for a short period to prevent high CPU usage
     except Exception as e:
         print(f"Error during continuous playback: {e}")
     finally:
@@ -47,9 +48,9 @@ def audio_callback(indata, frames, time, status):
 
 # Function to start audio recording
 def record_audio():
-    with sd.InputStream(samplerate=sample_rate, channels=1, callback=audio_callback):
+    with sd.InputStream(samplerate=sample_rate, blocksize=int(sample_rate * block_duration / 1000), channels=1, callback=audio_callback):
         while not stop_flag.is_set():
-            sd.sleep(100)
+            sd.sleep(block_duration)
 
 # Create a pyqtgraph application
 app = QApplication([])
@@ -71,12 +72,11 @@ def update():
     if not audio_queue.empty():
         audio_data = audio_queue.get()
         num_samples = len(audio_data)
-
         # Update waveform plot
         waveform_curve.setData(audio_data[:, 0])
 
         # Update spectrogram plot
-        X = np.fft.fft(audio_data[:, 0])
+        X = np.fft.rfft(audio_data[:, 0])
         X_mag = np.abs(X) / num_samples
         f_plot = np.linspace(0, sample_rate / 2, num_samples // 2)
         spectrogram_curve.setData(f_plot, X_mag[:num_samples // 2])
@@ -84,7 +84,7 @@ def update():
 # Set the update function to run periodically
 timer = QTimer()
 timer.timeout.connect(update)
-timer.start(100) # in milliseconds
+timer.start(block_duration) # in milliseconds
 
 # Flag to signal when to stop threads
 stop_flag = threading.Event()
