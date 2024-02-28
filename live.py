@@ -7,31 +7,37 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication
 
 # Parameters for the Sine wave
-duration = 20.0  # Total duration in seconds
+duration = 20.0  # Total duration in seconds, used for modulo in continuous playback
 sample_rate = 44100  # Sample rate in Hz
-frequency = 19000  # Frequency of the sine wave in Hz
-chunk_size = 1024  # Number of samples per chunk
-
+frequency = 1000  # Frequency of the sine wave in Hz
+chunk_size = 256  # Number of samples per chunk
+phase = 0.0
 # Queue to store recorded audio data
 audio_queue = queue.Queue()
 
-# Function to play the sine wave
+# Continuous sine wave playback function
 
-def play_sine_wave():
-    print("Starting sine wave playback")
-    duration_seconds = int(duration * sample_rate)
-    sine_wave = np.sin(2 * np.pi * frequency * np.linspace(0, duration, duration_seconds, endpoint=False))
-    sine_wave *= 0.5  # Adjust the amplitude if necessary
+def play_sine_wave_continuous():
+    global phase
+
+    def callback(outdata, frames, time, status):
+        global phase
+        if status:
+            print(status)
+        t = np.arange(frames) / sample_rate
+        outdata[:, 0] = np.sin(2 * np.pi * frequency * t + phase) * 0.5
+        phase += 2 * np.pi * frequency * frames / sample_rate
+        phase %= 2 * np.pi  # Keep phase in the [0, 2*pi] interval
 
     try:
-        sd.play(sine_wave, sample_rate)
-        sd.wait()  # You can try removing this line to see if it makes a difference
+        with sd.OutputStream(samplerate=sample_rate, channels=1, callback=callback):
+            print("Starting continuous sine wave playback.")
+            while not stop_flag.is_set():
+                sd.sleep(100)  # Sleep for a short period to prevent high CPU usage
     except Exception as e:
-        print(f"Error during playback: {e}")
-    
-    if stop_flag.is_set():
-        print("Stopping sine wave playback")
-    print("Finished sine wave playback")
+        print(f"Error during continuous playback: {e}")
+    finally:
+        print("Finished continuous sine wave playback.")
 
 # Callback function for recording audio
 def audio_callback(indata, frames, time, status):
@@ -43,7 +49,7 @@ def audio_callback(indata, frames, time, status):
 def record_audio():
     with sd.InputStream(samplerate=sample_rate, channels=1, callback=audio_callback):
         while not stop_flag.is_set():
-            sd.sleep(int(duration * 1000))
+            sd.sleep(100)
 
 # Create a pyqtgraph application
 app = QApplication([])
@@ -58,6 +64,7 @@ waveform_plot = win.addPlot(title="Waveform")
 waveform_curve = waveform_plot.plot(pen='y')
 win.nextRow()
 spectrogram_plot = win.addPlot(title="Spectrogram")
+spectrogram_plot.setYRange(0,.02) # This changes the y axis range
 spectrogram_curve = spectrogram_plot.plot(pen='y')
 
 def update():
@@ -83,7 +90,7 @@ timer.start(100) # in milliseconds
 stop_flag = threading.Event()
 
 # Start the sine wave and recording in separate threads
-playback_thread = threading.Thread(target=play_sine_wave)
+playback_thread = threading.Thread(target=play_sine_wave_continuous)
 recording_thread = threading.Thread(target=record_audio)
 playback_thread.start()
 recording_thread.start()
@@ -91,3 +98,6 @@ recording_thread.start()
 # Start Qt event loop
 if __name__ == '__main__':
     app.exec_()
+    stop_flag.set()
+    playback_thread.join()
+    recording_thread.join()
