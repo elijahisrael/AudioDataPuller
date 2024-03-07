@@ -9,10 +9,13 @@ from PyQt5.QtWidgets import QApplication
 # Parameters for the Sine wave
 duration = 20.0  # Total duration in seconds, used for modulo in continuous playback
 sample_rate = 44100  # Sample rate in Hz
-block_duration = 50 # length of block in ms
-frequency = 1000  # Frequency of the sine wave in Hz
+block_duration = 50 # length of input/output stream block in ms
+frequency = 18000  # Frequency of the sine wave in Hz
 chunk_size = 256  # Number of samples per chunk
 phase = 0.0
+
+plot_refresh_time_ms = 16; # Time between plot updates in ms (AKA gesture sampling rate )
+
 # Queue to store recorded audio data
 audio_queue = queue.Queue()
 
@@ -50,7 +53,7 @@ def audio_callback(indata, frames, time, status):
 def record_audio():
     with sd.InputStream(samplerate=sample_rate, blocksize=int(sample_rate * block_duration / 1000), channels=1, callback=audio_callback):
         while not stop_flag.is_set():
-            sd.sleep(block_duration)
+            sd.sleep(block_duration) 
 
 # Create a pyqtgraph application
 app = QApplication([])
@@ -84,7 +87,7 @@ def update():
 # Set the update function to run periodically
 timer = QTimer()
 timer.timeout.connect(update)
-timer.start(block_duration) # in milliseconds
+timer.start(plot_refresh_time_ms) # refreshes the plot with input from the input buffer after this delay
 
 # Flag to signal when to stop threads
 stop_flag = threading.Event()
